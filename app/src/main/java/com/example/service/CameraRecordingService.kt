@@ -429,8 +429,13 @@ class CameraRecordingService : Service(), LifecycleOwner {
             .setPriority(if (settingsManager.hideNotification) NotificationCompat.PRIORITY_MIN else NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
+            .setShowWhen(!settingsManager.hideNotification)
             .setContentIntent(pendingIntent)
             .setColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
+
+        if (settingsManager.hideNotification) {
+            builder.setSilent(true)
+        }
 
         if (_isRecordingActive.value && !settingsManager.hideNotification) {
             builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Recording", stopPendingIntent)

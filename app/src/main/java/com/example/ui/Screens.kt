@@ -2129,8 +2129,8 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
 
         AnimatedVisibility(
             visible = currentSubScreen == "main",
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
+            enter = fadeIn(),
+            exit = fadeOut()
         ) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
