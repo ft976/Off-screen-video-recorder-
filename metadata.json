@@ -1,0 +1,6 @@
+{
+  "name": "OffScreen Video Recorder",
+  "description": "A high-performance background video recording app that continues capturing clips cleanly even when your screen is locked or while multi-tasking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

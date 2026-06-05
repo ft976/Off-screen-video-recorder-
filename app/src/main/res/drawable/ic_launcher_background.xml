@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Sophisticated dark slate base -->
+    <path
+        android:fillColor="#12131C"
+        android:pathData="M0,0h108v108h-108z" />
+    <!-- High-tech subtle design grid overlay -->
+    <path
+        android:strokeWidth="0.5"
+        android:strokeColor="#1AFFFFFF"
+        android:pathData="M0,18 L108,18 M0,36 L108,36 M0,54 L108,54 M0,72 L108,72 M0,90 L108,90" />
+    <path
+        android:strokeWidth="0.5"
+        android:strokeColor="#1AFFFFFF"
+        android:pathData="M18,0 L18,108 M36,0 L36,108 M54,0 L54,108 M72,0 L72,108 M90,0 L90,108" />
+    <!-- Subtle glowing crimson camera lens orbit in background -->
+    <path
+        android:strokeWidth="1.2"
+        android:strokeColor="#33FF3B30"
+        android:pathData="M 54 24 A 30 30 0 1 0 54 84 A 30 30 0 1 0 54 24 Z" />
+</vector>
