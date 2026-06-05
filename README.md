@@ -19,11 +19,13 @@ Long recording sessions historically destroy mobile batteries. OffScreen introdu
 ### 🗄️ 3. Permanent Local Persistence & Sandbox Storage
 All data is permanently stored via **Room Orm SQLite** on the local device storage.
 *   **Guaranteed Preservation**: All videos, logs, markers, and metadata are saved permanently until the user authorizes a deletion.
-*   **Safe Sweeps**: The deletion system mandates a 2-step Double-Confirmation alert framework to prevent accidental removal of critical recordings.
+*   **Safe Sweeps**: The deletion system uses a streamlined confirmation alert framework to ensure clean UI while preventing accidental removal of critical recordings.
 *   **Diagnostic Storage Engine**: Queries the actual OS `StorageManager` dynamically, calculating precise free/total metrics of your physical partition.
 
-### 📍 4. Bookmark Timestamps
-During any active recording session, you can tap a special "Trigger Marker" action embedded right inside the active Android Notification Drawer. This logs the exact second of a critical event—perfect for auditing, dash-cam usage, or security logs.
+### 🔇 4. Stealth Operational Modes
+OffScreen integrates a variety of low-profile monitoring functions:
+*   **Disabled Audio**: Strip the audio stream entirely to save space and respect environmental restrictions.
+*   **Invisible Notifications**: Users can dynamically remove ongoing system notification payloads to operate even stealthier.
 
 ---
 
@@ -78,12 +80,8 @@ All source code and internal functional modules are provided under the terms of 
 
 > *"And man will have nothing except what he strives for" (Al-Quran 53:39)*
 
-This system was structured and architected with intense dedication to structural integrity, privacy capabilities, and clean user experience.
-
 * **Developer Profile:** Rehan Ahmad
 * **Mission:** *doing my part. the rest is His*
 * **Links**:
   - [GitHub Profile](https://github.com/Ft976)
   - [LinkedIn Profile](https://www.linkedin.com/in/rehan-ahmad-863386382)
-
-Every byte compiled, every frame buffered, and every local transaction persistent in this application is the output of deep respect for craft and privacy. We design and fine-tune tools so you feel secure and supported under any environment condition.

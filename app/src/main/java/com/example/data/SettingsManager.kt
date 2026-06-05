@@ -15,6 +15,7 @@ class SettingsManager(context: Context) {
         const val KEY_HIDE_ON_START = "hide_on_start"
         const val KEY_AUTO_RECOVERY = "auto_recovery"
         const val KEY_BATTERY_SHUTDOWN = "battery_shutdown"
+        const val KEY_HIDE_NOTIFICATION = "hide_notification"
         const val KEY_IS_RECORDING = "is_recording"
         const val KEY_ACTIVE_RECORDING_ID = "active_recording_id"
     }
@@ -50,6 +51,10 @@ class SettingsManager(context: Context) {
     var batteryShutdown: Boolean
         get() = prefs.getBoolean(KEY_BATTERY_SHUTDOWN, true)
         set(value) = prefs.edit().putBoolean(KEY_BATTERY_SHUTDOWN, value).apply()
+
+    var hideNotification: Boolean
+        get() = prefs.getBoolean(KEY_HIDE_NOTIFICATION, false)
+        set(value) = prefs.edit().putBoolean(KEY_HIDE_NOTIFICATION, value).apply()
 
     var isRecording: Boolean
         get() = prefs.getBoolean(KEY_IS_RECORDING, false)

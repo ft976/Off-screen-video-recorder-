@@ -48,11 +48,11 @@ class CameraRecordingService : Service(), LifecycleOwner {
         private const val TAG = "CameraRecordingService"
         private const val NOTIFICATION_ID = 8812
         private const val CHANNEL_ID = "offscreen_recording_channel"
+        private const val CHANNEL_ID_SILENT = "offscreen_recording_channel_silent"
 
         // Actions
         const val ACTION_START_RECORDING = "com.example.action.START_RECORDING"
         const val ACTION_STOP_RECORDING = "com.example.action.STOP_RECORDING"
-        const val ACTION_ADD_MARKER = "com.example.action.ADD_MARKER"
 
         // Live state exposures for in-app monitoring
         private val _recordingDurationMs = MutableStateFlow(0L)
@@ -63,8 +63,6 @@ class CameraRecordingService : Service(), LifecycleOwner {
 
         private val _currentStatus = MutableStateFlow("Stopped")
         val currentStatus: StateFlow<String> = _currentStatus
-
-        var currentMarkers = mutableListOf<String>()
     }
 
     private lateinit var lifecycleRegistry: LifecycleRegistry
@@ -141,21 +139,9 @@ class CameraRecordingService : Service(), LifecycleOwner {
             ACTION_STOP_RECORDING -> {
                 stopRecording()
             }
-            ACTION_ADD_MARKER -> {
-                addMarkerOfCurrentTime()
-            }
         }
 
         return START_NOT_STICKY
-    }
-
-    private fun addMarkerOfCurrentTime() {
-        if (!_isRecordingActive.value) return
-        val currentSecs = _recordingDurationMs.value / 1000L
-        val text = "Timestamp marker at ${currentSecs}s"
-        currentMarkers.add("$currentSecs:$text")
-        Toast.makeText(this, "Marker set in background at ${currentSecs}s", Toast.LENGTH_SHORT).show()
-        Log.d(TAG, "Marker added: $currentSecs")
     }
 
     private fun startRecording() {
@@ -164,7 +150,6 @@ class CameraRecordingService : Service(), LifecycleOwner {
             _isRecordingActive.value = true
             _currentStatus.value = "Recording"
             startTimestamp = System.currentTimeMillis()
-            currentMarkers.clear()
             _recordingDurationMs.value = 0L
             lastNotificationSeconds = -1L
 
@@ -370,9 +355,6 @@ class CameraRecordingService : Service(), LifecycleOwner {
             }
         }
 
-        // Build markers JSON string format: second:text;second:text
-        val markersString = currentMarkers.joinToString(";")
-
         // Save entry directly to our local Room log list
         lifecycleScope.launch(Dispatchers.IO) {
             val log = RecordingLog(
@@ -381,7 +363,7 @@ class CameraRecordingService : Service(), LifecycleOwner {
                 durationMs = elapsed,
                 resolution = settingsManager.videoQuality,
                 timestamp = System.currentTimeMillis(),
-                markersJson = markersString,
+                markersJson = "",
                 notes = "Recorded via Background Engine."
             )
             val insertId = repository.insertLog(log)
@@ -433,32 +415,24 @@ class CameraRecordingService : Service(), LifecycleOwner {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Marker Action
-        val markerIntent = Intent(this, CameraRecordingService::class.java).apply {
-            action = ACTION_ADD_MARKER
-        }
-        val markerPendingIntent = PendingIntent.getService(
-            this, 2, markerIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         val sec = durationMs / 1000
         val min = sec / 60
         val subtext = "● REC (${String.format("%02d:%02d", min, sec % 60)})"
 
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+        val targetChannelId = if (settingsManager.hideNotification) CHANNEL_ID_SILENT else CHANNEL_ID
+
+        val builder = NotificationCompat.Builder(this, targetChannelId)
             .setSmallIcon(android.R.drawable.presence_video_online)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setSubText(if (durationMs > 0) subtext else null)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentTitle(if (settingsManager.hideNotification) "System Service" else title)
+            .setContentText(if (settingsManager.hideNotification) "Running" else text)
+            .setSubText(if (durationMs > 0 && !settingsManager.hideNotification) subtext else null)
+            .setPriority(if (settingsManager.hideNotification) NotificationCompat.PRIORITY_MIN else NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
             .setColor(ContextCompat.getColor(this, android.R.color.holo_red_dark))
 
-        if (_isRecordingActive.value) {
-            builder.addAction(android.R.drawable.ic_media_pause, "Mark Event", markerPendingIntent)
+        if (_isRecordingActive.value && !settingsManager.hideNotification) {
             builder.addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop Recording", stopPendingIntent)
         }
 
@@ -472,6 +446,9 @@ class CameraRecordingService : Service(), LifecycleOwner {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java)
+            
+            // Standard channel
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 "OffScreen Video Recorder Background Status",
@@ -480,8 +457,18 @@ class CameraRecordingService : Service(), LifecycleOwner {
                 description = "Shows recording timer and control buttons during background recording."
                 setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(serviceChannel)
+            
+            // Silent channel
+            val silentChannel = NotificationChannel(
+                CHANNEL_ID_SILENT,
+                "Discreet Background Service",
+                NotificationManager.IMPORTANCE_MIN
+            ).apply {
+                description = "Silent foreground service placeholder."
+                setShowBadge(false)
+            }
+            manager.createNotificationChannel(silentChannel)
         }
     }
 

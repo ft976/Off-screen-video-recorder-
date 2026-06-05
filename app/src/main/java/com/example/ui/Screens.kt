@@ -211,13 +211,13 @@ fun MainRecordingFlow(viewModel: RecordingViewModel, permissionsState: MultipleP
     var selectedTab by remember { mutableStateOf(0) }
 
     Scaffold(
+        modifier = Modifier.navigationBarsPadding(),
         bottomBar = {
             Column {
                 HorizontalDivider(color = BorderColor, thickness = 1.dp)
                 NavigationBar(
                     containerColor = SoftNeutralBG,
-                    tonalElevation = 0.dp,
-                    modifier = Modifier.height(80.dp)
+                    tonalElevation = 0.dp
                 ) {
                     NavigationBarItem(
                         selected = selectedTab == 0,
@@ -427,9 +427,8 @@ fun RecordHubScreen(
     )
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(20.dp),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -929,6 +928,41 @@ fun RecordHubScreen(
             }
         }
 
+        item {
+            val enabled = !isRecording
+            val alphaMod = if (isRecording) 0.6f else 1.0f
+            OutlinedCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(alphaMod),
+                colors = CardDefaults.outlinedCardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, BorderColor),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        "DISCREET MODE",
+                        color = PrimaryIndigo,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    
+                    val hideNotification by viewModel.hideNotification.collectAsState()
+                    SettingsSwitchRow(
+                        title = "Hide Status Notification",
+                        subtitle = "Attempt to hide ongoing record notifications. (Some devices may still show a silent icon)",
+                        checked = hideNotification,
+                        onCheckedChange = { 
+                            if (enabled) viewModel.setHideNotification(it) 
+                            else Toast.makeText(context, "Cannot change during active recording", Toast.LENGTH_SHORT).show() 
+                        }
+                    )
+                }
+            }
+        }
+
         // Available Storage progress bar
         item {
             var storageState by remember { mutableStateOf(getStorageInfo(context)) }
@@ -996,22 +1030,6 @@ fun RecordHubScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (isRecording) {
-                    Button(
-                        onClick = { viewModel.triggerMarker() },
-                        colors = ButtonDefaults.buttonColors(containerColor = SoftNeutralBG, contentColor = PrimaryIndigo),
-                        border = BorderStroke(1.dp, BorderColor),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .height(56.dp)
-                            .weight(0.4f)
-                    ) {
-                        Icon(Icons.Default.Bookmark, contentDescription = "Marker checkpoint")
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Bookmark", fontWeight = FontWeight.Bold)
-                    }
-                }
-
                 Button(
                     onClick = {
                         if (isRecording) {
@@ -1035,7 +1053,7 @@ fun RecordHubScreen(
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .height(56.dp)
-                        .weight(if (isRecording) 0.6f else 1.0f)
+                        .weight(1.0f)
                 ) {
                     Icon(
                         imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Videocam,
@@ -1401,11 +1419,9 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
 
     // Double confirmation deletion states
     var pendingDeleteLog by remember { mutableStateOf<com.example.data.RecordingLog?>(null) }
-    var showDeleteConfirmStep1 by remember { mutableStateOf(false) }
-    var showDeleteConfirmStep2 by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
-    var showClearAllConfirmStep1 by remember { mutableStateOf(false) }
-    var showClearAllConfirmStep2 by remember { mutableStateOf(false) }
+    var showClearAllConfirmDialog by remember { mutableStateOf(false) }
 
     // Advanced search, sorting and filter states
     var searchQuery by remember { mutableStateOf("") }
@@ -1463,75 +1479,38 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
         )
     }
 
-    // --- SINGLE VIDEO LOG DELETION DOUBLE CONFIRMATION ---
-    if (showDeleteConfirmStep1 && pendingDeleteLog != null) {
+    // --- SINGLE VIDEO LOG DELETION CONFIRMATION ---
+    if (showDeleteConfirmDialog && pendingDeleteLog != null) {
         AlertDialog(
             onDismissRequest = { 
-                showDeleteConfirmStep1 = false 
+                showDeleteConfirmDialog = false 
                 pendingDeleteLog = null
             },
             title = { 
-                Text("Delete Video? (Step 1 of 2)", color = CoreDarkText, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
+                Text("Delete Video", color = CoreDarkText, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
             },
             text = { 
-                Text("Are you sure you want to delete the file \"${pendingDeleteLog?.fileName}\"? This will delete both the database record and local media.", fontSize = 14.sp) 
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showDeleteConfirmStep1 = false
-                        showDeleteConfirmStep2 = true
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
-                ) {
-                    Text("Yes, Delete It", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        showDeleteConfirmStep1 = false 
-                        pendingDeleteLog = null
-                    }
-                ) {
-                    Text("Cancel", color = CoreDarkText)
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    if (showDeleteConfirmStep2 && pendingDeleteLog != null) {
-        AlertDialog(
-            onDismissRequest = { 
-                showDeleteConfirmStep2 = false 
-                pendingDeleteLog = null
-            },
-            title = { 
-                Text("FINAL WARNING (Step 2 of 2)", color = AlertRed, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
-            },
-            text = { 
-                Text("DANGER: This action is permanent! The recorded clip file cannot be recovered. Are you absolutely certain you want to proceed?", fontSize = 14.sp) 
+                Text("Are you sure you want to permanently delete \"${pendingDeleteLog?.fileName}\"? This action cannot be undone.", fontSize = 14.sp) 
             },
             confirmButton = {
                 Button(
                     onClick = {
                         pendingDeleteLog?.let { log ->
                             viewModel.deleteLog(log.id)
-                            Toast.makeText(context, "Permanently purged video file.", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Video deleted.", Toast.LENGTH_SHORT).show()
                         }
-                        showDeleteConfirmStep2 = false
+                        showDeleteConfirmDialog = false
                         pendingDeleteLog = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
                 ) {
-                    Text("Yes, Permanently Purge", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { 
-                        showDeleteConfirmStep2 = false 
+                        showDeleteConfirmDialog = false 
                         pendingDeleteLog = null
                     }
                 ) {
@@ -1542,59 +1521,30 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
         )
     }
 
-    // --- CLEAR ALL VIDEOS DOUBLE CONFIRMATION ---
-    if (showClearAllConfirmStep1) {
+    // --- CLEAR ALL VIDEOS CONFIRMATION ---
+    if (showClearAllConfirmDialog) {
         AlertDialog(
-            onDismissRequest = { showClearAllConfirmStep1 = false },
+            onDismissRequest = { showClearAllConfirmDialog = false },
             title = { 
-                Text("Clear All Videos? (Step 1 of 2)", color = CoreDarkText, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
+                Text("Clear All Videos", color = AlertRed, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
             },
             text = { 
-                Text("Are you sure you want to sweep and clear all recordings from your media library and local device storage?", fontSize = 14.sp) 
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showClearAllConfirmStep1 = false
-                        showClearAllConfirmStep2 = true
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
-                ) {
-                    Text("Yes, Proceed", color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showClearAllConfirmStep1 = false }) {
-                    Text("Cancel", color = CoreDarkText)
-                }
-            },
-            containerColor = Color.White
-        )
-    }
-
-    if (showClearAllConfirmStep2) {
-        AlertDialog(
-            onDismissRequest = { showClearAllConfirmStep2 = false },
-            title = { 
-                Text("CONFIRM DELETION (Step 2 of 2)", color = AlertRed, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
-            },
-            text = { 
-                Text("This is your last warning! You are about to permanently wipe all recorded video files from this device. Click confirm to purge everything.", fontSize = 14.sp) 
+                Text("Are you sure you want to permanently delete all recorded video files from this device? This action cannot be undone.", fontSize = 14.sp) 
             },
             confirmButton = {
                 Button(
                     onClick = {
                         viewModel.clearAllLogsFromSystem()
                         Toast.makeText(context, "All logs and storage wiped", Toast.LENGTH_SHORT).show()
-                        showClearAllConfirmStep2 = false
+                        showClearAllConfirmDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
                 ) {
-                    Text("Yes, Wipe Every File", color = Color.White, fontWeight = FontWeight.Bold)
+                    Text("Clear All", color = Color.White, fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearAllConfirmStep2 = false }) {
+                TextButton(onClick = { showClearAllConfirmDialog = false }) {
                     Text("Cancel", color = CoreDarkText)
                 }
             },
@@ -1611,7 +1561,6 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
 
             val matchCategory = when (selectedFilterCategory) {
                 "With Notes" -> log.notes.isNotEmpty()
-                "Bookmarked" -> log.markersJson.isNotEmpty()
                 "1080p High-Res" -> log.resolution == "1080p"
                 else -> true
             }
@@ -1632,13 +1581,13 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(CleanBackground)
-            .padding(16.dp)
     ) {
         // Creative Header System
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 8.dp),
+                .padding(horizontal = 16.dp)
+                .padding(top = 16.dp, bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1665,7 +1614,7 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
             if (logs.isNotEmpty()) {
                 IconButton(
                     onClick = {
-                        showClearAllConfirmStep1 = true
+                        showClearAllConfirmDialog = true
                     }
                 ) {
                     Icon(
@@ -1684,7 +1633,7 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text("Search title, annotations, bookmarks...", fontSize = 13.sp, color = LightGreyText) },
+            placeholder = { Text("Search title or annotations...", fontSize = 13.sp, color = LightGreyText) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = PrimaryIndigo, modifier = Modifier.size(18.dp)) },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
@@ -1694,7 +1643,9 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
                 }
             },
             shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = Color.White,
                 unfocusedContainerColor = Color.White,
@@ -1711,11 +1662,11 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
 
         // Creative Horizontal Filters Row
         androidx.compose.foundation.lazy.LazyRow(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            val categories = listOf("All", "1080p High-Res", "With Notes", "Bookmarked")
+            val categories = listOf("All", "1080p High-Res", "With Notes")
             items(categories) { category ->
                 val isSelected = selectedFilterCategory == category
                 Box(
@@ -1858,6 +1809,7 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
                 modifier = Modifier
                     .fillMaxSize()
                     .weight(1.0f),
+                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 40.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(processedLogs, key = { log -> log.id }) { log ->
@@ -1869,7 +1821,7 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
                         },
                         onDeleteClick = {
                             pendingDeleteLog = log
-                            showDeleteConfirmStep1 = true
+                            showDeleteConfirmDialog = true
                         },
                         onShareClick = {
                             try {
@@ -2091,36 +2043,12 @@ fun VideoLogItemCard(
                     }
                 }
 
-                val markerItems = remember(log.markersJson) {
-                    if (log.markersJson.isEmpty()) emptyList()
-                    else log.markersJson.split(";").mapNotNull {
-                        val parts = it.split(":")
-                        if (parts.size >= 2) parts[0].toLongOrNull() to parts.subList(1, parts.size).joinToString(":")
-                        else null
-                    }
-                }
+                // Removed Markers Parse
 
-                if (markerItems.isNotEmpty() || isExpanded) {
+                if (isExpanded) {
                     Spacer(modifier = Modifier.height(10.dp))
                     HorizontalDivider(color = SoftNeutralBG, thickness = 1.dp)
                     Spacer(modifier = Modifier.height(10.dp))
-                    
-                    if (markerItems.isNotEmpty()) {
-                        Text("Bookmarks logged during filming (${markerItems.size}):", color = CoreDarkText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        markerItems.forEach { (secOffset, desc) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Bookmark, contentDescription = "Bookmark", tint = PrimaryIndigo, modifier = Modifier.size(12.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("[${secOffset}s]: $desc", color = MutedGreyText, fontSize = 10.sp)
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
                     
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -2159,7 +2087,7 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
         modifier = Modifier
             .fillMaxSize()
             .background(CleanBackground)
-            .padding(16.dp)
+            .padding(start = 16.dp, end = 16.dp, top = 16.dp)
     ) {
         if (currentSubScreen != "main") {
             // Elegant back button bar for inner sub-screens
@@ -2206,7 +2134,8 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
         ) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 40.dp)
             ) {
                 // Header block
                 item {
@@ -2313,7 +2242,8 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
         ) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 40.dp)
             ) {
                 item {
                     OutlinedCard(
@@ -2365,6 +2295,16 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
                                 checked = batteryShutdown,
                                 onCheckedChange = { viewModel.setBatteryShutdown(it) }
                             )
+
+                            HorizontalDivider(color = SoftNeutralBG, thickness = 1.dp, modifier = Modifier.padding(vertical = 12.dp))
+
+                            val hideNotification by viewModel.hideNotification.collectAsState()
+                            SettingsSwitchRow(
+                                title = "Hide Status Notification",
+                                subtitle = "Attempt to hide ongoing record notifications. (Some devices may still show a silent tray icon)",
+                                checked = hideNotification,
+                                onCheckedChange = { viewModel.setHideNotification(it) }
+                            )
                         }
                     }
                 }
@@ -2378,7 +2318,8 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
         ) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 40.dp)
             ) {
                 // Feature capabilities checkpoints
                 item {
@@ -2530,7 +2471,8 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
             val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 40.dp)
             ) {
                 // Majestic Developer Card: Rehan97
                 item {
@@ -2735,7 +2677,8 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
         ) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 40.dp)
             ) {
                 // Step-by-Step guides manual
                 item {
@@ -2761,7 +2704,7 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
                             Spacer(modifier = Modifier.height(8.dp))
                             DocumentStepItem(index = "3.", text = "If Instant App Minimizing is active, the app window closes instantly. You can lock your device, turn off the physical screen, or write e-mails without interrupting recording.")
                             Spacer(modifier = Modifier.height(8.dp))
-                            DocumentStepItem(index = "4.", text = "Locate the persistent background system notification. You can tap 'Mark Event' to save checkpoint times, or click 'Stop Recording' to finalize.")
+                            DocumentStepItem(index = "4.", text = "Locate the persistent background system notification. You can click 'Stop Recording' to finalize, or the service will stop securely if shut down.")
                             Spacer(modifier = Modifier.height(8.dp))
                             DocumentStepItem(index = "5.", text = "Review, note, share, or delete recorded clips anytime in the stored Clips Library tab.")
                         }
@@ -2841,7 +2784,8 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
             val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 40.dp)
             ) {
                 // Slogan Hero Card
                 item {
@@ -2947,51 +2891,6 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
                                     letterSpacing = 1.sp
                                 )
                             }
-                        }
-                    }
-                }
-
-                // Philosophical Faith note block
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, SoftIndigoBG)
-                    ) {
-                        Column(modifier = Modifier.padding(18.dp)) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Favorite,
-                                    contentDescription = "Creed Emblem",
-                                    tint = GlowCrimson,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = "System Philosophy",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CoreDarkText
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "doing my part. the rest is His",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = PrimaryIndigo,
-                                fontStyle = FontStyle.Italic
-                            )
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = "Every byte compiled, every frame buffered, and every local transaction persistent in this application is the output of deep respect for craft and privacy. We design and fine-tune tools so you feel secure and supported under any environment condition.",
-                                fontSize = 11.5.sp,
-                                color = MutedGreyText,
-                                lineHeight = 16.sp
-                            )
                         }
                     }
                 }

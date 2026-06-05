@@ -97,6 +97,9 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     private val _batteryShutdown = MutableStateFlow(settingsManager.batteryShutdown)
     val batteryShutdown: StateFlow<Boolean> = _batteryShutdown.asStateFlow()
 
+    private val _hideNotification = MutableStateFlow(settingsManager.hideNotification)
+    val hideNotification: StateFlow<Boolean> = _hideNotification.asStateFlow()
+
     // Service Status Flow Integration
     val isRecordingRunning: StateFlow<Boolean> = CameraRecordingService.isRecordingActive
     val activeDurationMs: StateFlow<Long> = CameraRecordingService.recordingDurationMs
@@ -163,7 +166,6 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
             if (widthHeights.any { (w, h) -> (w >= 720 && h >= 480) || (w >= 480 && h >= 720) || (w >= 640 && h >= 480) || (w >= 480 && h >= 640) }) {
                 resolutions.add("480p")
             }
-            resolutions.add("360p")
 
             val uniqueList = resolutions.distinct()
             return if (uniqueList.isNotEmpty()) uniqueList else listOf("480p")
@@ -259,6 +261,11 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         _batteryShutdown.value = enabled
     }
 
+    fun setHideNotification(enabled: Boolean) {
+        settingsManager.hideNotification = enabled
+        _hideNotification.value = enabled
+    }
+
     fun startBackgroundRecording() {
         if (!isRecordingRunning.value) {
             val intent = Intent(getApplication(), CameraRecordingService::class.java).apply {
@@ -281,15 +288,6 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
         if (isRecordingRunning.value) {
             val intent = Intent(getApplication(), CameraRecordingService::class.java).apply {
                 action = CameraRecordingService.ACTION_STOP_RECORDING
-            }
-            getApplication<Application>().startService(intent)
-        }
-    }
-
-    fun triggerMarker() {
-        if (isRecordingRunning.value) {
-            val intent = Intent(getApplication(), CameraRecordingService::class.java).apply {
-                action = CameraRecordingService.ACTION_ADD_MARKER
             }
             getApplication<Application>().startService(intent)
         }
@@ -320,18 +318,6 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
             repository.getLogById(logId)?.let { log ->
                 val updatedLog = log.copy(notes = notes)
                 repository.updateLog(updatedLog)
-            }
-        }
-    }
-
-    fun addCustomMarker(logId: Long, text: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            repository.getLogById(logId)?.let { log ->
-                val seconds = System.currentTimeMillis() / 1000 % 60 // fallback mock offset sec
-                val item = "$seconds:$text"
-                val newMarkers = if (log.markersJson.isEmpty()) item else "${log.markersJson};$item"
-                val updated = log.copy(markersJson = newMarkers)
-                repository.updateLog(updated)
             }
         }
     }
