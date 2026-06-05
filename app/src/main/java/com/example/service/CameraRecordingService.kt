@@ -120,7 +120,12 @@ class CameraRecordingService : Service(), LifecycleOwner {
 
         // Ensure we immediately display a persistent notification to fulfill foreground service requirements
         val initialNotification = buildNotification("Preparing recorder...", "Please wait", 0)
-        startForeground(NOTIFICATION_ID, initialNotification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val type = android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            startForeground(NOTIFICATION_ID, initialNotification, type)
+        } else {
+            startForeground(NOTIFICATION_ID, initialNotification)
+        }
 
         val action = intent?.action ?: ACTION_START_RECORDING
         Log.d(TAG, "onStartCommand action: $action")
@@ -195,7 +200,12 @@ class CameraRecordingService : Service(), LifecycleOwner {
         }
 
         val recorder = Recorder.Builder()
-            .setQualitySelector(QualitySelector.from(quality))
+            .setQualitySelector(
+                QualitySelector.from(
+                    quality,
+                    FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+                )
+            )
             .build()
 
         val videoCapture = VideoCapture.withOutput(recorder)
@@ -213,15 +223,51 @@ class CameraRecordingService : Service(), LifecycleOwner {
             }
 
             try {
-                val camera2Control = Camera2CameraControl.from(camera.cameraControl)
-                val options = CaptureRequestOptions.Builder()
-                    .setCaptureRequestOption(
-                        CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
-                        Range(targetFps, targetFps)
-                    )
-                    .build()
-                camera2Control.captureRequestOptions = options
-                Log.i(TAG, "Applied battery-saving frame rate restriction: $targetFps FPS (Preset: $frameRateSetting)")
+                val camera2Info = androidx.camera.camera2.interop.Camera2CameraInfo.from(camera.cameraInfo)
+                val availableRanges = camera2Info.getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                var chosenRange: Range<Int>? = null
+                
+                if (availableRanges != null) {
+                    for (range in availableRanges) {
+                        if (range.upper == targetFps) {
+                            if (chosenRange == null || range.lower < chosenRange.lower) {
+                                chosenRange = range
+                            }
+                        }
+                    }
+                    if (chosenRange == null) {
+                        for (range in availableRanges) {
+                            if (targetFps in range.lower..range.upper) {
+                                chosenRange = range
+                                break
+                            }
+                        }
+                    }
+                    if (chosenRange == null) {
+                        var minDiff = 1000
+                        for (range in availableRanges) {
+                            val diff = Math.abs(range.upper - targetFps)
+                            if (diff < minDiff) {
+                                minDiff = diff
+                                chosenRange = range
+                            }
+                        }
+                    }
+                }
+
+                if (chosenRange != null) {
+                    val camera2Control = Camera2CameraControl.from(camera.cameraControl)
+                    val options = CaptureRequestOptions.Builder()
+                        .setCaptureRequestOption(
+                            CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                            chosenRange
+                        )
+                        .build()
+                    camera2Control.captureRequestOptions = options
+                    Log.i(TAG, "Applied battery-saving frame rate restriction range: $chosenRange (Requested $targetFps)")
+                } else {
+                    Log.w(TAG, "No suitable AE FPS range found on this device!")
+                }
             } catch (ex: Exception) {
                 Log.e(TAG, "Failed to apply custom camera2 frame rate filter: ${ex.message}", ex)
             }

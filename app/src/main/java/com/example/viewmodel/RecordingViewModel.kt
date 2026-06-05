@@ -23,6 +23,55 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
             initialValue = emptyList()
         )
 
+    // Real-time Battery Level Monitoring
+    private val _batteryLevel = MutableStateFlow(100)
+    val batteryLevel: StateFlow<Int> = _batteryLevel.asStateFlow()
+
+    private val _isBatteryCharging = MutableStateFlow(false)
+    val isBatteryCharging: StateFlow<Boolean> = _isBatteryCharging.asStateFlow()
+
+    private val batteryReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+            val level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+            val pct = if (level >= 0 && scale > 0) {
+                (level * 100 / scale.toFloat()).toInt()
+            } else {
+                100
+            }
+            _batteryLevel.value = pct
+
+            val status = intent.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+            val charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                    status == android.os.BatteryManager.BATTERY_STATUS_FULL
+            _isBatteryCharging.value = charging
+        }
+    }
+
+    init {
+        try {
+            val filter = android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)
+            val stickyIntent = application.registerReceiver(batteryReceiver, filter)
+            stickyIntent?.let { intent ->
+                val level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+                val scale = intent.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, -1)
+                val pct = if (level >= 0 && scale > 0) {
+                    (level * 100 / scale.toFloat()).toInt()
+                } else {
+                    100
+                }
+                _batteryLevel.value = pct
+
+                val status = intent.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1)
+                val charging = status == android.os.BatteryManager.BATTERY_STATUS_CHARGING ||
+                        status == android.os.BatteryManager.BATTERY_STATUS_FULL
+                _isBatteryCharging.value = charging
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     // Expose flows for Settings and Status
     private val _cameraLens = MutableStateFlow(settingsManager.cameraLens)
     val cameraLens: StateFlow<Int> = _cameraLens.asStateFlow()
@@ -56,6 +105,123 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     fun setCameraLens(lens: Int) {
         settingsManager.cameraLens = lens
         _cameraLens.value = lens
+        
+        // Auto-correct quality & frame rate if they aren't supported on this lens!
+        val resolutions = getSupportedResolutions()
+        if (_videoQuality.value !in resolutions && resolutions.isNotEmpty()) {
+            setVideoQuality(resolutions.first())
+        }
+        val fpsList = getSupportedFrameRates()
+        if (_frameRate.value !in fpsList && fpsList.isNotEmpty()) {
+            setFrameRate(fpsList.first())
+        }
+    }
+
+    // Dynamic resolution query from Selected Physical Sensor
+    fun getSupportedResolutions(): List<String> {
+        val context = getApplication<Application>()
+        val cameraManager = context.getSystemService(android.content.Context.CAMERA_SERVICE) as? android.hardware.camera2.CameraManager
+            ?: return listOf("480p", "720p", "1080p")
+        try {
+            val lensFacing = settingsManager.cameraLens
+            var targetCameraId: String? = null
+            for (id in cameraManager.cameraIdList) {
+                val chars = cameraManager.getCameraCharacteristics(id)
+                val facing = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
+                val requestedFacing = if (lensFacing == androidx.camera.core.CameraSelector.LENS_FACING_BACK) {
+                    android.hardware.camera2.CameraCharacteristics.LENS_FACING_BACK
+                } else {
+                    android.hardware.camera2.CameraCharacteristics.LENS_FACING_FRONT
+                }
+                if (facing == requestedFacing) {
+                    targetCameraId = id
+                    break
+                }
+            }
+            if (targetCameraId == null && cameraManager.cameraIdList.isNotEmpty()) {
+                targetCameraId = cameraManager.cameraIdList[0]
+            }
+            if (targetCameraId == null) return listOf("480p", "720p")
+
+            val characteristics = cameraManager.getCameraCharacteristics(targetCameraId)
+            val map = characteristics.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?: return listOf("480p", "720p")
+
+            val sizes = map.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)
+                ?: map.getOutputSizes(android.media.MediaRecorder::class.java)
+                ?: return listOf("480p", "720p")
+
+            val resolutions = mutableListOf<String>()
+            val widthHeights = sizes.map { Pair(it.width, it.height) }
+
+            if (widthHeights.any { (w, h) -> (w >= 1920 && h >= 1080) || (w >= 1080 && h >= 1920) }) {
+                resolutions.add("1080p")
+            }
+            if (widthHeights.any { (w, h) -> (w >= 1280 && h >= 720) || (w >= 720 && h >= 1280) }) {
+                resolutions.add("720p")
+            }
+            if (widthHeights.any { (w, h) -> (w >= 720 && h >= 480) || (w >= 480 && h >= 720) || (w >= 640 && h >= 480) || (w >= 480 && h >= 640) }) {
+                resolutions.add("480p")
+            }
+            resolutions.add("360p")
+
+            val uniqueList = resolutions.distinct()
+            return if (uniqueList.isNotEmpty()) uniqueList else listOf("480p")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return listOf("480p", "720p", "1080p")
+        }
+    }
+
+    // Dynamic FPS query from Selected Physical Sensor
+    fun getSupportedFrameRates(): List<String> {
+        val context = getApplication<Application>()
+        val cameraManager = context.getSystemService(android.content.Context.CAMERA_SERVICE) as? android.hardware.camera2.CameraManager
+            ?: return listOf("15 FPS", "24 FPS", "30 FPS")
+        try {
+            val lensFacing = settingsManager.cameraLens
+            var targetCameraId: String? = null
+            for (id in cameraManager.cameraIdList) {
+                val chars = cameraManager.getCameraCharacteristics(id)
+                val facing = chars.get(android.hardware.camera2.CameraCharacteristics.LENS_FACING)
+                val requestedFacing = if (lensFacing == androidx.camera.core.CameraSelector.LENS_FACING_BACK) {
+                    android.hardware.camera2.CameraCharacteristics.LENS_FACING_BACK
+                } else {
+                    android.hardware.camera2.CameraCharacteristics.LENS_FACING_FRONT
+                }
+                if (facing == requestedFacing) {
+                    targetCameraId = id
+                    break
+                }
+            }
+            if (targetCameraId == null && cameraManager.cameraIdList.isNotEmpty()) {
+                targetCameraId = cameraManager.cameraIdList[0]
+            }
+            if (targetCameraId == null) return listOf("30 FPS")
+
+            val characteristics = cameraManager.getCameraCharacteristics(targetCameraId)
+            val fpsRanges = characteristics.get(android.hardware.camera2.CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                ?: return listOf("30 FPS")
+
+            val supported = mutableListOf<String>()
+            val uppers = fpsRanges.map { it.upper }.distinct()
+            
+            if (uppers.any { it >= 30 }) {
+                supported.add("30 FPS")
+            }
+            if (uppers.any { it >= 24 }) {
+                supported.add("24 FPS")
+            }
+            if (uppers.any { it >= 15 }) {
+                supported.add("15 FPS")
+            }
+            
+            val result = supported.distinct().sortedDescending()
+            return if (result.isNotEmpty()) result else listOf("30 FPS")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return listOf("15 FPS", "24 FPS", "30 FPS")
+        }
     }
 
     fun setVideoQuality(quality: String) {
@@ -130,8 +296,22 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun deleteLog(logId: Long) {
+        val context = getApplication<Application>()
         viewModelScope.launch(Dispatchers.IO) {
-            repository.deleteLogById(logId)
+            val log = repository.getLogById(logId)
+            log?.let {
+                try {
+                    if (it.filePath.startsWith("content://")) {
+                        context.contentResolver.delete(android.net.Uri.parse(it.filePath), null, null)
+                    } else {
+                        val f = java.io.File(it.filePath)
+                        if (f.exists()) f.delete()
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+                repository.deleteLogById(logId)
+            }
         }
     }
 
@@ -173,6 +353,15 @@ class RecordingViewModel(application: Application) : AndroidViewModel(applicatio
                 }
                 repository.deleteLogById(log.id)
             }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        try {
+            getApplication<Application>().unregisterReceiver(batteryReceiver)
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 }

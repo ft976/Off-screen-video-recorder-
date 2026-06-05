@@ -28,14 +28,17 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -60,6 +63,13 @@ val BorderColor = Color(0xFFCAC4D0)
 val MutedGreyText = Color(0xFF44464F)
 val LightGreyText = Color(0xFF757780)
 val AlertRed = Color(0xFFBA1A1A)
+
+// Creative Palette additions for visual interest and Dev Profile
+val BrightTeal = Color(0xFF0D9488)
+val DarkNavyAccent = Color(0xFF1E1B4B)
+val RichGold = Color(0xFFD97706)
+val SoftGoldBG = Color(0xFFFEF3C7)
+val GlowCrimson = Color(0xFFE11D48)
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -281,6 +291,102 @@ fun MainRecordingFlow(viewModel: RecordingViewModel, permissionsState: MultipleP
     }
 }
 
+// Dynamic Battery Meter & Status Pill Components
+@Composable
+fun BatteryPill(level: Int, isCharging: Boolean) {
+    val containerColor = when {
+        isCharging -> Color(0xFFE8F5E9)       // Soft battery-saving green
+        level <= 15 -> Color(0xFFFFEBEE)     // Soft crimson panic
+        level <= 30 -> Color(0xFFFFF3E0)     // Soft amber alert
+        else -> SoftNeutralBG                // Clean neutral slate
+    }
+    val contentColor = when {
+        isCharging -> Color(0xFF2E7D32)
+        level <= 15 -> Color(0xFFC62828)
+        level <= 30 -> Color(0xFFEF6C00)
+        else -> MutedGreyText
+    }
+    val icon = when {
+        isCharging -> Icons.Default.Bolt
+        level <= 15 -> Icons.Default.BatteryAlert
+        else -> Icons.Default.BatteryFull
+    }
+
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, contentColor.copy(alpha = 0.15f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = "Battery Metric",
+                tint = contentColor,
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                text = "$level%",
+                color = contentColor,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+fun BatteryLowCriticalAlert(level: Int) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xFFFFCDD2))
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(Color(0xFFFFCDD2), shape = CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = "Warning Level",
+                    tint = Color(0xFFD32F2F),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "CRITICAL BATTERY THRESHOLD ($level%)",
+                    color = Color(0xFFC62828),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "Battery is running dangerously low. To extend operations, we highly recommend setting the Recording Frame Rate to '15 FPS' to halve CPU core overhead.",
+                    color = Color(0xFFD32F2F),
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun RecordHubScreen(
@@ -288,7 +394,8 @@ fun RecordHubScreen(
     permissionsState: MultiplePermissionsState, 
     onSettingsClick: () -> Unit
 ) {
-    val activity = LocalContext.current as? Activity
+    val context = LocalContext.current
+    val activity = context as? Activity
     val isRecording by viewModel.isRecordingRunning.collectAsState()
     val activeDurationMs by viewModel.activeDurationMs.collectAsState()
     val cameraLens by viewModel.cameraLens.collectAsState()
@@ -300,6 +407,10 @@ fun RecordHubScreen(
     val hideAppOnStart by viewModel.hideAppOnStart.collectAsState()
     val batteryShutdown by viewModel.batteryShutdown.collectAsState()
     val logs by viewModel.recordingLogs.collectAsState()
+
+    // Real-time battery flows
+    val batteryLevel by viewModel.batteryLevel.collectAsState()
+    val isBatteryCharging by viewModel.isBatteryCharging.collectAsState()
 
     var showPermissionPrompt by remember { mutableStateOf(false) }
 
@@ -333,13 +444,6 @@ fun RecordHubScreen(
             ) {
                 Column {
                     Text(
-                        text = "SERVICE ACTIVE",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = PrimaryIndigo,
-                        letterSpacing = 2.sp
-                    )
-                    Text(
                         text = "OffScreen Rec",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -347,22 +451,36 @@ fun RecordHubScreen(
                     )
                 }
                 
-                // Settings icon redirects to the rich status info page!
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .background(SoftIndigoBG)
-                        .clickable { onSettingsClick() },
-                    contentAlignment = Alignment.Center
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = "Status Details",
-                        tint = CoreDarkText,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    BatteryPill(level = batteryLevel, isCharging = isBatteryCharging)
+
+                    // Settings icon redirects to the rich status info page!
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .background(SoftIndigoBG)
+                            .clickable { onSettingsClick() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Status Details",
+                            tint = CoreDarkText,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
+            }
+        }
+
+        // Real-time Critical Battery Warning Alert Banner
+        if (batteryLevel <= 15 && !isBatteryCharging) {
+            item {
+                BatteryLowCriticalAlert(level = batteryLevel)
             }
         }
 
@@ -461,27 +579,55 @@ fun RecordHubScreen(
 
         // Lens Selection Card
         item {
+            val enabled = !isRecording
+            val alphaMod = if (isRecording) 0.6f else 1.0f
             OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(alphaMod),
                 colors = CardDefaults.outlinedCardColors(containerColor = Color.White),
                 border = BorderStroke(1.dp, BorderColor),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "CAMERA LENS", 
-                        color = PrimaryIndigo, 
-                        fontWeight = FontWeight.Bold, 
-                        fontSize = 11.sp,
-                        letterSpacing = 1.sp
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "CAMERA LENS", 
+                            color = PrimaryIndigo, 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 11.sp,
+                            letterSpacing = 1.sp
+                        )
+                        if (isRecording) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Locked",
+                                    tint = AlertRed,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("LOCKED", color = AlertRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Button(
-                            onClick = { viewModel.setCameraLens(CameraSelector.LENS_FACING_BACK) },
+                            onClick = {
+                                if (enabled) {
+                                    viewModel.setCameraLens(CameraSelector.LENS_FACING_BACK)
+                                } else {
+                                    Toast.makeText(context, "Cannot change camera lens during active recording", Toast.LENGTH_SHORT).show()
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (cameraLens == CameraSelector.LENS_FACING_BACK) PrimaryIndigo else SoftNeutralBG,
                                 contentColor = if (cameraLens == CameraSelector.LENS_FACING_BACK) Color.White else CoreDarkText
@@ -500,7 +646,13 @@ fun RecordHubScreen(
                         }
 
                         Button(
-                            onClick = { viewModel.setCameraLens(CameraSelector.LENS_FACING_FRONT) },
+                            onClick = {
+                                if (enabled) {
+                                    viewModel.setCameraLens(CameraSelector.LENS_FACING_FRONT)
+                                } else {
+                                    Toast.makeText(context, "Cannot change camera lens during active recording", Toast.LENGTH_SHORT).show()
+                                }
+                            },
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (cameraLens == CameraSelector.LENS_FACING_FRONT) PrimaryIndigo else SoftNeutralBG,
                                 contentColor = if (cameraLens == CameraSelector.LENS_FACING_FRONT) Color.White else CoreDarkText
@@ -524,22 +676,44 @@ fun RecordHubScreen(
 
         // Quality presets
         item {
+            val enabled = !isRecording
+            val alphaMod = if (isRecording) 0.6f else 1.0f
+            val qualityPresets = remember(cameraLens) { viewModel.getSupportedResolutions() }
             OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(alphaMod),
                 colors = CardDefaults.outlinedCardColors(containerColor = Color.White),
                 border = BorderStroke(1.dp, BorderColor),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "FILMING QUALITY PRESET", 
-                        color = PrimaryIndigo, 
-                        fontWeight = FontWeight.Bold, 
-                        fontSize = 11.sp,
-                        letterSpacing = 1.sp
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "FILMING QUALITY PRESET", 
+                            color = PrimaryIndigo, 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 11.sp,
+                            letterSpacing = 1.sp
+                        )
+                        if (isRecording) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Locked",
+                                    tint = AlertRed,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("LOCKED", color = AlertRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(12.dp))
-                    val qualityPresets = listOf("1080p", "720p", "480p", "360p", "214p")
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -550,7 +724,13 @@ fun RecordHubScreen(
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(if (videoQuality == preset) PrimaryIndigo else SoftNeutralBG)
-                                    .clickable { viewModel.setVideoQuality(preset) }
+                                    .clickable {
+                                        if (enabled) {
+                                            viewModel.setVideoQuality(preset)
+                                        } else {
+                                            Toast.makeText(context, "Cannot change video quality during active recording", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -569,8 +749,13 @@ fun RecordHubScreen(
 
         // Frame Rate Selection Card to Conserve Battery
         item {
+            val enabled = !isRecording
+            val alphaMod = if (isRecording) 0.6f else 1.0f
+            val fpsPresets = remember(cameraLens) { viewModel.getSupportedFrameRates() }
             OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(alphaMod),
                 colors = CardDefaults.outlinedCardColors(containerColor = Color.White),
                 border = BorderStroke(1.dp, BorderColor),
                 shape = RoundedCornerShape(16.dp)
@@ -588,18 +773,31 @@ fun RecordHubScreen(
                             fontSize = 11.sp,
                             letterSpacing = 1.sp
                         )
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(SoftIndigoBG)
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                "Battery Saver", 
-                                color = PrimaryIndigo, 
-                                fontSize = 9.sp, 
-                                fontWeight = FontWeight.Bold
-                            )
+                        if (isRecording) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Locked",
+                                    tint = AlertRed,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("LOCKED", color = AlertRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(SoftIndigoBG)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    "Battery Saver", 
+                                    color = PrimaryIndigo, 
+                                    fontSize = 9.sp, 
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -609,7 +807,6 @@ fun RecordHubScreen(
                         color = MutedGreyText
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    val fpsPresets = listOf("15 FPS", "24 FPS", "30 FPS")
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -620,7 +817,13 @@ fun RecordHubScreen(
                                     .weight(1f)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(if (frameRate == preset) PrimaryIndigo else SoftNeutralBG)
-                                    .clickable { viewModel.setFrameRate(preset) }
+                                    .clickable {
+                                        if (enabled) {
+                                            viewModel.setFrameRate(preset)
+                                        } else {
+                                            Toast.makeText(context, "Cannot change frame rate during active recording", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -639,27 +842,52 @@ fun RecordHubScreen(
 
         // Advanced Tuning switch list
         item {
+            val enabled = !isRecording
+            val alphaMod = if (isRecording) 0.6f else 1.0f
             OutlinedCard(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .alpha(alphaMod),
                 colors = CardDefaults.outlinedCardColors(containerColor = Color.White),
                 border = BorderStroke(1.dp, BorderColor),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        "BACKGROUND RECORDING TUNING", 
-                        color = PrimaryIndigo, 
-                        fontWeight = FontWeight.Bold, 
-                        fontSize = 11.sp,
-                        letterSpacing = 1.sp
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "BACKGROUND RECORDING TUNING", 
+                            color = PrimaryIndigo, 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 11.sp,
+                            letterSpacing = 1.sp
+                        )
+                        if (isRecording) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = "Locked",
+                                    tint = AlertRed,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("LOCKED", color = AlertRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                     Spacer(modifier = Modifier.height(14.dp))
 
                     SettingsSwitchRow(
                         title = "Enable Audio Recording",
                         subtitle = "Include sound flow via microphone stream.",
                         checked = audioEnabled,
-                        onCheckedChange = { viewModel.setAudioEnabled(it) }
+                        onCheckedChange = { 
+                            if (enabled) viewModel.setAudioEnabled(it) 
+                            else Toast.makeText(context, "Cannot change tuning during active recording", Toast.LENGTH_SHORT).show() 
+                        }
                     )
                     
                     HorizontalDivider(color = SoftNeutralBG, thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
@@ -668,7 +896,10 @@ fun RecordHubScreen(
                         title = "Silent Operation",
                         subtitle = "Mute shutter sound prompts & Toast indicators.",
                         checked = silentMode,
-                        onCheckedChange = { viewModel.setSilentMode(it) }
+                        onCheckedChange = { 
+                            if (enabled) viewModel.setSilentMode(it) 
+                            else Toast.makeText(context, "Cannot change tuning during active recording", Toast.LENGTH_SHORT).show() 
+                        }
                     )
 
                     HorizontalDivider(color = SoftNeutralBG, thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
@@ -677,7 +908,10 @@ fun RecordHubScreen(
                         title = "Hide App on Filming Start",
                         subtitle = "Close activity UI instantly when backgrounding lens.",
                         checked = hideAppOnStart,
-                        onCheckedChange = { viewModel.setHideAppOnStart(it) }
+                        onCheckedChange = { 
+                            if (enabled) viewModel.setHideAppOnStart(it) 
+                            else Toast.makeText(context, "Cannot change tuning during active recording", Toast.LENGTH_SHORT).show() 
+                        }
                     )
 
                     HorizontalDivider(color = SoftNeutralBG, thickness = 1.dp, modifier = Modifier.padding(vertical = 8.dp))
@@ -686,7 +920,10 @@ fun RecordHubScreen(
                         title = "Smart Low-Battery Stop",
                         subtitle = "Auto-save clip when charge level drops under 5%.",
                         checked = batteryShutdown,
-                        onCheckedChange = { viewModel.setBatteryShutdown(it) }
+                        onCheckedChange = { 
+                            if (enabled) viewModel.setBatteryShutdown(it) 
+                            else Toast.makeText(context, "Cannot change tuning during active recording", Toast.LENGTH_SHORT).show() 
+                        }
                     )
                 }
             }
@@ -694,10 +931,10 @@ fun RecordHubScreen(
 
         // Available Storage progress bar
         item {
-            var storageState by remember { mutableStateOf(getStorageInfo()) }
+            var storageState by remember { mutableStateOf(getStorageInfo(context)) }
 
             LaunchedEffect(logs.size, isRecording) {
-                storageState = getStorageInfo()
+                storageState = getStorageInfo(context)
             }
 
             Box(
@@ -850,10 +1087,10 @@ fun SettingsSwitchRow(title: String, subtitle: String, checked: Boolean, onCheck
 
 data class StorageInfo(val freeGb: Float, val totalGb: Float)
 
-fun getStorageInfo(): StorageInfo {
+fun getStorageInfo(context: android.content.Context): StorageInfo {
     return try {
-        val path = android.os.Environment.getDataDirectory().path
-        val stat = android.os.StatFs(path)
+        val fileDir = context.getExternalFilesDir(null) ?: context.filesDir
+        val stat = android.os.StatFs(fileDir.absolutePath)
         val blockSize = stat.blockSizeLong
         val availableBlocks = stat.availableBlocksLong
         val totalBlocks = stat.blockCountLong
@@ -866,7 +1103,17 @@ fun getStorageInfo(): StorageInfo {
             totalGb = String.format(Locale.US, "%.1f", totalGb).toFloat()
         )
     } catch (e: Exception) {
-        StorageInfo(12.4f, 64.0f)
+        try {
+            val stat = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+            val freeGb = (stat.availableBytes / (1024.0 * 1024.0 * 1024.0)).toFloat()
+            val totalGb = (stat.totalBytes / (1024.0 * 1024.0 * 1024.0)).toFloat()
+            StorageInfo(
+                freeGb = String.format(Locale.US, "%.1f", freeGb).toFloat(),
+                totalGb = String.format(Locale.US, "%.1f", totalGb).toFloat()
+            )
+        } catch (ex: Exception) {
+            StorageInfo(12.4f, 64.0f)
+        }
     }
 }
 
@@ -1152,6 +1399,19 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
     var previewVideoPath by remember { mutableStateOf<String?>(null) }
     var previewVideoName by remember { mutableStateOf<String?>(null) }
 
+    // Double confirmation deletion states
+    var pendingDeleteLog by remember { mutableStateOf<com.example.data.RecordingLog?>(null) }
+    var showDeleteConfirmStep1 by remember { mutableStateOf(false) }
+    var showDeleteConfirmStep2 by remember { mutableStateOf(false) }
+
+    var showClearAllConfirmStep1 by remember { mutableStateOf(false) }
+    var showClearAllConfirmStep2 by remember { mutableStateOf(false) }
+
+    // Advanced search, sorting and filter states
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedFilterCategory by remember { mutableStateOf("All") }
+    var selectedSortOrder by remember { mutableStateOf("Newest") }
+
     if (previewVideoPath != null && previewVideoName != null) {
         VideoPreviewDialog(
             filePath = previewVideoPath!!,
@@ -1203,26 +1463,201 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
         )
     }
 
+    // --- SINGLE VIDEO LOG DELETION DOUBLE CONFIRMATION ---
+    if (showDeleteConfirmStep1 && pendingDeleteLog != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                showDeleteConfirmStep1 = false 
+                pendingDeleteLog = null
+            },
+            title = { 
+                Text("Delete Video? (Step 1 of 2)", color = CoreDarkText, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
+            },
+            text = { 
+                Text("Are you sure you want to delete the file \"${pendingDeleteLog?.fileName}\"? This will delete both the database record and local media.", fontSize = 14.sp) 
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmStep1 = false
+                        showDeleteConfirmStep2 = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
+                ) {
+                    Text("Yes, Delete It", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showDeleteConfirmStep1 = false 
+                        pendingDeleteLog = null
+                    }
+                ) {
+                    Text("Cancel", color = CoreDarkText)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    if (showDeleteConfirmStep2 && pendingDeleteLog != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                showDeleteConfirmStep2 = false 
+                pendingDeleteLog = null
+            },
+            title = { 
+                Text("FINAL WARNING (Step 2 of 2)", color = AlertRed, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
+            },
+            text = { 
+                Text("DANGER: This action is permanent! The recorded clip file cannot be recovered. Are you absolutely certain you want to proceed?", fontSize = 14.sp) 
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingDeleteLog?.let { log ->
+                            viewModel.deleteLog(log.id)
+                            Toast.makeText(context, "Permanently purged video file.", Toast.LENGTH_SHORT).show()
+                        }
+                        showDeleteConfirmStep2 = false
+                        pendingDeleteLog = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
+                ) {
+                    Text("Yes, Permanently Purge", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { 
+                        showDeleteConfirmStep2 = false 
+                        pendingDeleteLog = null
+                    }
+                ) {
+                    Text("Cancel", color = CoreDarkText)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // --- CLEAR ALL VIDEOS DOUBLE CONFIRMATION ---
+    if (showClearAllConfirmStep1) {
+        AlertDialog(
+            onDismissRequest = { showClearAllConfirmStep1 = false },
+            title = { 
+                Text("Clear All Videos? (Step 1 of 2)", color = CoreDarkText, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
+            },
+            text = { 
+                Text("Are you sure you want to sweep and clear all recordings from your media library and local device storage?", fontSize = 14.sp) 
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearAllConfirmStep1 = false
+                        showClearAllConfirmStep2 = true
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
+                ) {
+                    Text("Yes, Proceed", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllConfirmStep1 = false }) {
+                    Text("Cancel", color = CoreDarkText)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    if (showClearAllConfirmStep2) {
+        AlertDialog(
+            onDismissRequest = { showClearAllConfirmStep2 = false },
+            title = { 
+                Text("CONFIRM DELETION (Step 2 of 2)", color = AlertRed, fontWeight = FontWeight.Bold, fontSize = 16.sp) 
+            },
+            text = { 
+                Text("This is your last warning! You are about to permanently wipe all recorded video files from this device. Click confirm to purge everything.", fontSize = 14.sp) 
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.clearAllLogsFromSystem()
+                        Toast.makeText(context, "All logs and storage wiped", Toast.LENGTH_SHORT).show()
+                        showClearAllConfirmStep2 = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AlertRed)
+                ) {
+                    Text("Yes, Wipe Every File", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearAllConfirmStep2 = false }) {
+                    Text("Cancel", color = CoreDarkText)
+                }
+            },
+            containerColor = Color.White
+        )
+    }
+
+    // Applying filter logic
+    val filteredLogs = remember(logs, searchQuery, selectedFilterCategory) {
+        logs.filter { log ->
+            val matchQuery = searchQuery.isEmpty() || 
+                    log.fileName.contains(searchQuery, ignoreCase = true) || 
+                    log.notes.contains(searchQuery, ignoreCase = true)
+
+            val matchCategory = when (selectedFilterCategory) {
+                "With Notes" -> log.notes.isNotEmpty()
+                "Bookmarked" -> log.markersJson.isNotEmpty()
+                "1080p High-Res" -> log.resolution == "1080p"
+                else -> true
+            }
+            matchQuery && matchCategory
+        }
+    }
+
+    // Applying sort logic
+    val processedLogs = remember(filteredLogs, selectedSortOrder) {
+        when (selectedSortOrder) {
+            "Oldest" -> filteredLogs.sortedBy { it.timestamp }
+            "Longest" -> filteredLogs.sortedByDescending { it.durationMs }
+            else -> filteredLogs.sortedByDescending { it.timestamp } // Newest
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CleanBackground)
             .padding(16.dp)
     ) {
+        // Creative Header System
         Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
                 Text(
-                    text = "RECORDED CLIPS",
+                    text = "RECORDED CLIPS VIRTUAL VAULT",
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 18.sp,
+                    color = PrimaryIndigo,
+                    letterSpacing = 1.5.sp
+                )
+                Text(
+                    text = "Media Library",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
                     color = CoreDarkText
                 )
                 Text(
-                    text = "${logs.size} total videos • ${remember(logs) { formatTotalLogsBytes(context, logs) }} used",
+                    text = "${filteredLogs.size} visible • ${logs.size} total videos logged",
                     fontSize = 11.sp,
                     color = MutedGreyText
                 )
@@ -1230,15 +1665,118 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
             if (logs.isNotEmpty()) {
                 IconButton(
                     onClick = {
-                        viewModel.clearAllLogsFromSystem()
-                        Toast.makeText(context, "All logs and storage wiped", Toast.LENGTH_SHORT).show()
+                        showClearAllConfirmStep1 = true
                     }
                 ) {
-                    Icon(Icons.Default.DeleteSweep, contentDescription = "Clear all database and folders", tint = AlertRed)
+                    Icon(
+                        imageVector = Icons.Default.DeleteSweep, 
+                        contentDescription = "Clear absolute vault", 
+                        tint = AlertRed,
+                        modifier = Modifier.size(26.dp)
+                    )
                 }
             }
         }
 
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Professional Search Box
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Search title, annotations, bookmarks...", fontSize = 13.sp, color = LightGreyText) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = PrimaryIndigo, modifier = Modifier.size(18.dp)) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Close, contentDescription = "Clear Search", tint = MutedGreyText, modifier = Modifier.size(16.dp))
+                    }
+                }
+            },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                focusedTextColor = CoreDarkText,
+                unfocusedTextColor = CoreDarkText,
+                focusedLabelColor = PrimaryIndigo,
+                unfocusedLabelColor = MutedGreyText,
+                focusedIndicatorColor = PrimaryIndigo,
+                unfocusedIndicatorColor = BorderColor.copy(alpha = 0.5f)
+            )
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Creative Horizontal Filters Row
+        androidx.compose.foundation.lazy.LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val categories = listOf("All", "1080p High-Res", "With Notes", "Bookmarked")
+            items(categories) { category ->
+                val isSelected = selectedFilterCategory == category
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(30.dp))
+                        .background(if (isSelected) PrimaryIndigo else SoftNeutralBG)
+                        .clickable { selectedFilterCategory = category }
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = category,
+                        color = if (isSelected) Color.White else CoreDarkText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Sort Selector Bar
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "SORT BY ORDER:",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = MutedGreyText,
+                letterSpacing = 1.sp
+            )
+            
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                val orders = listOf("Newest", "Oldest", "Longest")
+                orders.forEach { order ->
+                    val isSelected = selectedSortOrder == order
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) SoftIndigoBG else Color.Transparent)
+                            .clickable { selectedSortOrder = order }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = order,
+                            color = if (isSelected) PrimaryIndigo else LightGreyText,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Library Listing rendering
         if (logs.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -1247,24 +1785,72 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(SoftIndigoBG, shape = CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = "Empty Metadata Database",
+                            tint = PrimaryIndigo,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "Your Secure Vault is Empty",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CoreDarkText
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Initiate a background recording to populate clips.",
+                        fontSize = 12.sp,
+                        color = MutedGreyText,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else if (processedLogs.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1.0f),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Icon(
-                        imageVector = Icons.Default.FolderOpen,
-                        contentDescription = "Empty Folder",
+                        imageVector = Icons.Default.SearchOff,
+                        contentDescription = "No match results type",
                         tint = LightGreyText,
-                        modifier = Modifier.size(64.dp)
+                        modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "No videos saved yet",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
+                        text = "No results found",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
                         color = CoreDarkText
                     )
                     Text(
-                        "Clips recorded in background will appear here.",
+                        text = "Try clearing your query or selected filters.",
                         fontSize = 12.sp,
-                        color = LightGreyText
+                        color = MutedGreyText
                     )
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Button(
+                        onClick = {
+                            searchQuery = ""
+                            selectedFilterCategory = "All"
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryIndigo),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Reset Filters", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         } else {
@@ -1274,7 +1860,7 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
                     .weight(1.0f),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(logs, key = { log -> log.id }) { log ->
+                items(processedLogs, key = { log -> log.id }) { log ->
                     VideoLogItemCard(
                         log = log,
                         onEditNotesClick = {
@@ -1282,8 +1868,8 @@ fun ClipsLibraryScreen(viewModel: RecordingViewModel) {
                             currentEditNotes = log.notes
                         },
                         onDeleteClick = {
-                            viewModel.deleteLog(log.id)
-                            Toast.makeText(context, "Removed from logs library", Toast.LENGTH_SHORT).show()
+                            pendingDeleteLog = log
+                            showDeleteConfirmStep1 = true
                         },
                         onShareClick = {
                             try {
@@ -1603,6 +2189,7 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
                         "info" -> "System Info & State"
                         "about" -> "About OffScreen"
                         "documents" -> "Documents & Guides"
+                        "dev_profile" -> "Developer Profile & Creed"
                         else -> "Settings"
                     },
                     fontSize = 18.sp,
@@ -1706,6 +2293,13 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
                             subtitle = "Interactive background video capture instructions, safety manual, troubleshooting guides, FAQs.",
                             icon = Icons.Default.Description,
                             onClick = { currentSubScreen = "documents" }
+                        )
+
+                        SettingsNavigationCard(
+                            title = "Developer Profile & Creed",
+                            subtitle = "Read about Rehan Ahmad's vision, system tenets, personal notes, and inspiring work principles.",
+                            icon = Icons.Default.AccountCircle,
+                            onClick = { currentSubScreen = "dev_profile" }
                         )
                     }
                 }
@@ -1816,10 +2410,10 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
 
                 // Storage diagnostics helper
                 item {
-                    var storageState by remember { mutableStateOf(getStorageInfo()) }
+                    var storageState by remember { mutableStateOf(getStorageInfo(context)) }
 
                     LaunchedEffect(logs.size, isRecording) {
-                        storageState = getStorageInfo()
+                        storageState = getStorageInfo(context)
                     }
 
                     Box(
@@ -1933,10 +2527,121 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {
+            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier.fillMaxSize()
             ) {
+                // Majestic Developer Card: Rehan97
+                item {
+                    OutlinedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.outlinedCardColors(containerColor = Color.White),
+                        border = BorderStroke(1.5.dp, PrimaryIndigo),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // Beautiful initials avatar
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .background(PrimaryIndigo, shape = CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "R97",
+                                        color = Color.White,
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Rehan97",
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = CoreDarkText
+                                    )
+                                    Text(
+                                        text = "Lead Android Systems Architect",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = PrimaryIndigo,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Rehan is a passionate systems architect specialising in local storage, background task automation, and secure sandboxed media frameworks on Android.",
+                                fontSize = 11.5.sp,
+                                color = MutedGreyText,
+                                lineHeight = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                // GitHub Pill
+                                Button(
+                                    onClick = {
+                                        try {
+                                            uriHandler.openUri("https://github.com/Ft976")
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Could not open browser URL", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292E), contentColor = Color.White),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(38.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Code,
+                                        contentDescription = "GitHub Handle",
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("GitHub", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+
+                                // LinkedIn Pill
+                                Button(
+                                    onClick = {
+                                        try {
+                                            uriHandler.openUri("https://www.linkedin.com/in/rehan-ahmad-863386382?utm_source=share_via&utm_content=profile&utm_medium=member_android")
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Could not open browser URL", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0077B5), contentColor = Color.White),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(38.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Launch,
+                                        contentDescription = "LinkedIn Handle",
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("LinkedIn", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Description card
                 item {
                     OutlinedCard(
@@ -2124,6 +2829,277 @@ fun StatusInfoScreen(viewModel: RecordingViewModel) {
                             )
                         }
                     }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = currentSubScreen == "dev_profile",
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // Slogan Hero Card
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = DarkNavyAccent),
+                        shape = RoundedCornerShape(20.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .background(
+                                        Brush.linearGradient(
+                                            colors = listOf(RichGold, BrightTeal)
+                                        ),
+                                        shape = CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "R97",
+                                    color = Color.White,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "REHAN AHMAD",
+                                color = Color.White,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "Lead Android Systems Architect",
+                                color = BrightTeal,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "gave it everything I had",
+                                color = SoftGoldBG,
+                                fontSize = 14.sp,
+                                fontStyle = FontStyle.Italic,
+                                fontWeight = FontWeight.Medium,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+
+                // Inspiring Holy Verse & Creed Card
+                item {
+                    OutlinedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.outlinedCardColors(containerColor = SoftGoldBG.copy(alpha = 0.6f)),
+                        border = BorderStroke(1.5.dp, RichGold),
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Star,
+                                contentDescription = "Spiritual Crest",
+                                tint = RichGold,
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "“And man will have nothing except what he strives for”",
+                                color = DarkNavyAccent,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontStyle = FontStyle.Italic,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 22.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .background(RichGold, shape = RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "AL-QURAN 53:39",
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Philosophical Faith note block
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color.White),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, SoftIndigoBG)
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Favorite,
+                                    contentDescription = "Creed Emblem",
+                                    tint = GlowCrimson,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "System Philosophy",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CoreDarkText
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "doing my part. the rest is His",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = PrimaryIndigo,
+                                fontStyle = FontStyle.Italic
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "Every byte compiled, every frame buffered, and every local transaction persistent in this application is the output of deep respect for craft and privacy. We design and fine-tune tools so you feel secure and supported under any environment condition.",
+                                fontSize = 11.5.sp,
+                                color = MutedGreyText,
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+
+                // Interactive Bio & Core Tech Specs Card
+                item {
+                    OutlinedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.outlinedCardColors(containerColor = Color.White),
+                        border = BorderStroke(1.dp, BorderColor),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "ARCHITECTURAL TENETS & STACK",
+                                color = BrightTeal,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Local Sandbox Storage", fontSize = 11.5.sp, color = MutedGreyText)
+                                Text("Context-bound Private Directory", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = BrightTeal)
+                            }
+                            HorizontalDivider(color = SoftNeutralBG, modifier = Modifier.padding(vertical = 8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Background Filming Engine", fontSize = 11.5.sp, color = MutedGreyText)
+                                Text("Platform CameraX Framework", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = BrightTeal)
+                            }
+                            HorizontalDivider(color = SoftNeutralBG, modifier = Modifier.padding(vertical = 8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("System Database", fontSize = 11.5.sp, color = MutedGreyText)
+                                Text("Room SQLite Persistence Layer", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = BrightTeal)
+                            }
+                        }
+                    }
+                }
+
+                // Social connections Row
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                try {
+                                    uriHandler.openUri("https://github.com/Ft976")
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Could not open browser URL", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF24292E), contentColor = Color.White),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Code,
+                                contentDescription = "GitHub Handle",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("GitHub", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                try {
+                                    uriHandler.openUri("https://www.linkedin.com/in/rehan-ahmad-863386382?utm_source=share_via&utm_content=profile&utm_medium=member_android")
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Could not open browser URL", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0077B5), contentColor = Color.White),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Launch,
+                                contentDescription = "LinkedIn Handle",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("LinkedIn", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+                
+                item {
+                    Spacer(modifier = Modifier.height(20.dp))
                 }
             }
         }
