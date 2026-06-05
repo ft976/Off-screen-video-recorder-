@@ -1,4 +1,8 @@
-# 🎥 OffScreen Rec: Stealth Background Video & Audio Recorder
+<div align="center">
+  <img src="assets/logo.png" alt="OffScreen Logo" width="150" height="150" />
+  
+  # 🎥 OffScreen Rec: Stealth Background Video & Audio Recorder
+</div>
 
 OffScreen Rec is a highly optimized, battery-efficient, and discreet background video and audio recording application designed for Android devices. Engineered entirely in **Kotlin** with **Jetpack Compose**, **CameraX**, and **Material Design 3**, OffScreen empowers users to capture secure media streams in a process-bounded background layer, even when the display is completely shut off.
 
